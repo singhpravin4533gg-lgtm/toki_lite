@@ -50,7 +50,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
     if (_appIdController.text.trim().isEmpty ||
         _roomController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('App ID और Room Name डालना ज़रूरी है!')),
+        const SnackBar(content: Text('App ID aur Room Name zaroori hai!')),
       );
       return;
     }
@@ -101,7 +101,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                   ),
                   SizedBox(height: 6),
                   Text(
-                    'दो फ़ोनों से एक ही Room Name डालें — असली लाइव आवाज़, असली लाइव चैट, गिफ्ट्स और पार्टी गेम्स!',
+                    'Do phones se ek hi Room Name daalein — Real Live Voice, Live Chat, Gifts aur Party Games!',
                     style: TextStyle(fontSize: 12, color: Colors.white70),
                     textAlign: TextAlign.center,
                   ),
@@ -112,7 +112,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
             TextField(
               controller: _nameController,
               decoration: InputDecoration(
-                labelText: 'आपका नाम (Your Name)',
+                labelText: 'Aapka Naam (Your Name)',
                 prefixIcon: const Icon(Icons.person),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -121,7 +121,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
             TextField(
               controller: _roomController,
               decoration: InputDecoration(
-                labelText: 'Room Name (दोनों फ़ोन में एक ही रखें)',
+                labelText: 'Room Name (Dono phone mein same rakhein)',
                 prefixIcon: const Icon(Icons.meeting_room),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -139,7 +139,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
             TextField(
               controller: _tokenController,
               decoration: InputDecoration(
-                labelText: 'Temp Token (वैकल्पिक — यदि App Certificate चालू हो)',
+                labelText: 'Temp Token (Optional)',
                 prefixIcon: const Icon(Icons.lock_outline),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -149,7 +149,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
               onPressed: _enterRoom,
               icon: const Icon(Icons.mic),
               label: const Text(
-                'रूम में जुड़ें (Join Live Room)',
+                'Join Live Room',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
@@ -187,7 +187,7 @@ class LiveRoomScreen extends StatefulWidget {
 }
 
 class _LiveRoomScreenState extends State<LiveRoomScreen> {
-  late final RtcEngine _engine;
+  RtcEngine? _engine;
   int? _streamId;
   bool _isJoined = false;
   bool _isMuted = false;
@@ -196,9 +196,9 @@ class _LiveRoomScreenState extends State<LiveRoomScreen> {
   String? _bannerText;
   Timer? _bannerTimer;
 
-  final List?> _seats = List.filled(9, null);
-  final Set<int> _speakingUids = {};
-  final List> _messages = [];
+  final List?> _seats = List?>.filled(9, null);
+  final Set<int> _speakingUids = <int>{};
+  final List> _messages = >[];
   final TextEditingController _chatController = TextEditingController();
 
   @override
@@ -208,47 +208,53 @@ class _LiveRoomScreenState extends State<LiveRoomScreen> {
   }
 
   Future<void> _setupAgora() async {
-    _engine = createAgoraRtcEngine();
-    await _engine.initialize(RtcEngineContext(
+    final engine = createAgoraRtcEngine();
+    _engine = engine;
+    await engine.initialize(RtcEngineContext(
       appId: widget.appId,
       channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
     ));
 
-    await _engine.enableAudio();
-    await _engine.enableAudioVolumeIndication(
+    await engine.enableAudio();
+    await engine.enableAudioVolumeIndication(
       interval: 250,
       smooth: 3,
       reportVad: true,
     );
 
-    _engine.registerEventHandler(
+    engine.registerEventHandler(
       RtcEngineEventHandler(
         onJoinChannelSuccess: (RtcConnection connection, int elapsed) async {
+          if (!mounted) return;
           setState(() {
             _isJoined = true;
             _localUid = connection.localUid ?? 0;
             _messages.add({
               'sender': 'Toki',
-              'text': '✅ आप लाइव रूम "${widget.channelName}" में जुड़ गए हैं!'
+              'text': 'Connected to "${widget.channelName}"!'
             });
           });
-          _streamId = await _engine.createDataStream(
-            const DataStreamConfig(syncWithAudio: false, ordered: true),
-          );
+          try {
+            _streamId = await engine.createDataStream(
+              const DataStreamConfig(syncWithAudio: false, ordered: true),
+            );
+          } catch (_) {}
           final emptyIdx = _seats.indexWhere((s) => s == null);
           if (emptyIdx != -1) _takeSeat(emptyIdx);
         },
         onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+          if (!mounted) return;
           setState(() {
             _messages.add({
               'sender': 'Toki',
-              'text': '🎉 नया दोस्त (ID: $remoteUid) रूम में आया!'
+              'text': 'New user (ID: $remoteUid) joined!'
             });
           });
           _broadcast({'type': 'sync_seats', 'seats': _seats});
         },
         onUserOffline: (RtcConnection connection, int remoteUid,
             UserOfflineReasonType reason) {
+          if (!mounted) return;
           setState(() {
             for (int i = 0; i < 9; i++) {
               if (_seats[i] != null && _seats[i]!['uid'] == remoteUid) {
@@ -285,8 +291,8 @@ class _LiveRoomScreenState extends State<LiveRoomScreen> {
       ),
     );
 
-    await _engine.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
-    await _engine.joinChannel(
+    await engine.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
+    await engine.joinChannel(
       token: widget.token,
       channelId: widget.channelName,
       uid: 0,
@@ -298,13 +304,15 @@ class _LiveRoomScreenState extends State<LiveRoomScreen> {
   }
 
   Future<void> _broadcast(Map<String, dynamic> data) async {
-    if (_streamId == null || !_isJoined) return;
-    final bytes = Uint8List.fromList(utf8.encode(jsonEncode(data)));
-    await _engine.sendStreamMessage(
-      streamId: _streamId!,
-      data: bytes,
-      length: bytes.length,
-    );
+    if (_streamId == null || !_isJoined || _engine == null) return;
+    try {
+      final bytes = Uint8List.fromList(utf8.encode(jsonEncode(data)));
+      await _engine!.sendStreamMessage(
+        streamId: _streamId!,
+        data: bytes,
+        length: bytes.length,
+      );
+    } catch (_) {}
   }
 
   void _onRemoteData(Map<String, dynamic> data) {
@@ -313,29 +321,32 @@ class _LiveRoomScreenState extends State<LiveRoomScreen> {
       switch (data['type']) {
         case 'chat':
           _messages.add({
-            'sender': data['sender'] ?? 'User',
-            'text': data['text'] ?? '',
+            'sender': (data['sender'] ?? 'User').toString(),
+            'text': (data['text'] ?? '').toString(),
           });
           break;
         case 'seat':
-          _seats[data['index'] as int] = data['user'];
+          final idx = data['index'] as int;
+          _seats[idx] = data['user'] == null
+              ? null
+              : Map<String, dynamic>.from(data['user'] as Map);
           break;
         case 'sync_seats':
           final list = data['seats'] as List<dynamic>;
           for (int i = 0; i < 9 && i < list.length; i++) {
             if (list[i] != null && _seats[i] == null) {
-              _seats[i] = Map<String, dynamic>.from(list[i]);
+              _seats[i] = Map<String, dynamic>.from(list[i] as Map);
             }
           }
           break;
         case 'gift':
-          final msg = '${data['sender']} ने ${data['gift']} भेजा!';
-          _messages.add({'sender': '🎁 Gift', 'text': msg});
+          final msg = '${data['sender']} sent ${data['gift']}!';
+          _messages.add({'sender': 'Gift', 'text': msg});
           _showBanner(msg);
           break;
         case 'game':
           final msg = '${data['sender']}: ${data['result']}';
-          _messages.add({'sender': '🎲 Party Game', 'text': msg});
+          _messages.add({'sender': 'Game', 'text': msg});
           _showBanner(msg);
           break;
       }
@@ -357,7 +368,7 @@ class _LiveRoomScreenState extends State<LiveRoomScreen> {
         _broadcast({'type': 'seat', 'index': i, 'user': null});
       }
     }
-    final userObj = {'uid': _localUid, 'name': widget.userName};
+    final userObj = <String, dynamic>{'uid': _localUid, 'name': widget.userName};
     setState(() => _seats[index] = userObj);
     _broadcast({'type': 'seat', 'index': index, 'user': userObj});
   }
@@ -380,21 +391,21 @@ class _LiveRoomScreenState extends State<LiveRoomScreen> {
     setState(() {
       _coins -= cost;
       _messages.add({
-        'sender': '🎁 Gift',
-        'text': '${widget.userName} ने $gift भेजा!',
+        'sender': 'Gift',
+        'text': '${widget.userName} sent $gift!',
       });
     });
-    _showBanner('${widget.userName} ने $gift भेजा!');
+    _showBanner('${widget.userName} sent $gift!');
     _broadcast({'type': 'gift', 'sender': widget.userName, 'gift': gift});
     Navigator.pop(context);
   }
 
-  void _playDiceOrTruth() {
+  void _playDice() {
     final dice = Random().nextInt(6) + 1;
-    final result = '🎲 Ludo Dice में $dice आया!';
+    final result = 'Rolled Dice: $dice';
     setState(() {
       _messages.add({
-        'sender': '🎲 Party Game',
+        'sender': 'Game',
         'text': '${widget.userName}: $result',
       });
     });
@@ -417,9 +428,9 @@ class _LiveRoomScreenState extends State<LiveRoomScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Live Gifts भेजें',
+                const Text('Send Live Gift',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                Text('🪙 $_coins Coins',
+                Text('Coins: $_coins',
                     style: const TextStyle(
                         color: Colors.amber, fontWeight: FontWeight.bold)),
               ],
@@ -428,10 +439,10 @@ class _LiveRoomScreenState extends State<LiveRoomScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _giftButton('🌹 Rose', 10),
-                _giftButton('👑 Crown', 100),
-                _giftButton('🏎️ Car', 500),
-                _giftButton('🚀 Rocket', 1000),
+                _giftButton('Rose', 10),
+                _giftButton('Crown', 100),
+                _giftButton('Car', 500),
+                _giftButton('Rocket', 1000),
               ],
             ),
             const SizedBox(height: 12),
@@ -453,10 +464,10 @@ class _LiveRoomScreenState extends State<LiveRoomScreen> {
         ),
         child: Column(
           children: [
-            Text(label.split(' ').first, style: const TextStyle(fontSize: 26)),
+            const Icon(Icons.card_giftcard, color: Colors.pinkAccent, size: 28),
             const SizedBox(height: 4),
-            Text(label.split(' ').last, style: const TextStyle(fontSize: 12)),
-            Text('🪙 $cost',
+            Text(label, style: const TextStyle(fontSize: 12)),
+            Text('$cost',
                 style: const TextStyle(fontSize: 11, color: Colors.amber)),
           ],
         ),
@@ -466,14 +477,14 @@ class _LiveRoomScreenState extends State<LiveRoomScreen> {
 
   Future<void> _toggleMute() async {
     setState(() => _isMuted = !_isMuted);
-    await _engine.muteLocalAudioStream(_isMuted);
+    await _engine?.muteLocalAudioStream(_isMuted);
   }
 
   @override
   void dispose() {
     _bannerTimer?.cancel();
-    _engine.leaveChannel();
-    _engine.release();
+    _engine?.leaveChannel();
+    _engine?.release();
     super.dispose();
   }
 
@@ -487,21 +498,21 @@ class _LiveRoomScreenState extends State<LiveRoomScreen> {
           children: [
             Text(widget.channelName, style: const TextStyle(fontSize: 16)),
             Text(
-              _isJoined ? '🟢 Real Multi-User Sync Active' : '🟡 Connecting...',
+              _isJoined ? 'Live Multi-User Sync Active' : 'Connecting...',
               style: const TextStyle(fontSize: 11, color: Colors.white70),
             ),
           ],
         ),
         actions: [
           IconButton(
-            onPressed: _playDiceOrTruth,
+            onPressed: _playDice,
             icon: const Icon(Icons.casino),
-            tooltip: 'Roll Live Dice',
+            tooltip: 'Roll Dice',
           ),
           Center(
             child: Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: Text('🪙 $_coins',
+              child: Text('Coins: $_coins',
                   style: const TextStyle(
                       color: Colors.amber, fontWeight: FontWeight.bold)),
             ),
@@ -520,7 +531,7 @@ class _LiveRoomScreenState extends State<LiveRoomScreen> {
                 ),
               ),
               child: Text(
-                '✨ $_bannerText ✨',
+                _bannerText!,
                 textAlign: TextAlign.center,
                 style:
                     const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
@@ -591,12 +602,4 @@ class _LiveRoomScreenState extends State<LiveRoomScreen> {
                             fontWeight: isOccupied
                                 ? FontWeight.bold
                                 : FontWeight.normal,
-                            color: isOccupied ? Colors.white : Colors.white54,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-      
+                            col
